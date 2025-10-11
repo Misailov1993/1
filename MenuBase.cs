@@ -68,6 +68,19 @@ namespace Oxide.Plugins
 		private void OnServerInitialized()
 		{
 			permission.RegisterPermission(PERM_ADMIN, this);
+
+			// Ensure admin section exists in config
+			if (cfg?.BaseSettings?.Sections != null && !cfg.BaseSettings.Sections.ContainsKey("admin"))
+			{
+				cfg.BaseSettings.Sections["admin"] = new Section
+				{
+					LangKey = "section_admin",
+					Order = 10,
+					Command = "mb.admin.open",
+					AdminOnly = true
+				};
+				SaveConfig(cfg);
+			}
 			var images = new List<string>();
 
 			foreach (var x in cfg.BaseSettings.Sections)
@@ -293,6 +306,8 @@ namespace Oxide.Plugins
 
 		private void UI_DrawMainDiv(BasePlayer player, bool needDrawBG)
 		{
+			// Clean up any admin overlays when (re)building main layout
+			CuiHelper.DestroyUi(player, Layer + ".admin.div");
 			var container = new CuiElementContainer();
 			container.Add(new CuiPanel
 			{
@@ -718,7 +733,7 @@ namespace Oxide.Plugins
 				}
 			});
 
-			// Example admin buttons
+			// Admin buttons
 			container.Add(new CuiButton
 			{
 				Button = { Color = ORANGE_COLOR, Command = "mb.admin.kickmenu" },
@@ -732,6 +747,65 @@ namespace Oxide.Plugins
 				Text = { Text = GetMsg("admin_btn_settings", player), Font = "robotocondensed-bold.ttf", FontSize = 14, Align = TextAnchor.MiddleCenter, Color = TEXT_COLOR },
 				RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = "20 60", OffsetMax = "200 100" }
 			}, Layer + ".admin.div");
+
+			CuiHelper.AddUi(player, container);
+		}
+
+		private void UI_DrawAdminSettings(BasePlayer player)
+		{
+			var container = new CuiElementContainer();
+			container.Add(new CuiPanel
+			{
+				CursorEnabled = false,
+				Image = { Color = WHITE_TRANSPARENT_BACKGROUND },
+				RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = "-200 -120", OffsetMax = "360 120" }
+			}, Layer + ".admin.div", Layer + ".admin.settings");
+
+			container.Add(new CuiElement
+			{
+				Parent = Layer + ".admin.settings",
+				Components = {
+					new CuiTextComponent { Text = GetMsg("admin_settings_title", player), Font = "robotocondensed-bold.ttf", FontSize = 16, Align = TextAnchor.UpperCenter, Color = TEXT_COLOR },
+					new CuiRectTransformComponent { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = "-150 80", OffsetMax = "150 110" }
+				}
+			});
+
+			container.Add(new CuiButton
+			{
+				Button = { Color = WHITE_TRANSPARENT_BACKGROUND, Command = "mb.admin.open" },
+				Text = { Text = GetMsg("back", player), Font = "robotocondensed-bold.ttf", FontSize = 12, Align = TextAnchor.MiddleCenter, Color = TEXT_COLOR },
+				RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = "-40 -100", OffsetMax = "40 -70" }
+			}, Layer + ".admin.settings");
+
+			CuiHelper.AddUi(player, container);
+		}
+
+		private void UI_DrawAdminPlayers(BasePlayer player)
+		{
+			var container = new CuiElementContainer();
+			container.Add(new CuiPanel
+			{
+				CursorEnabled = false,
+				Image = { Color = WHITE_TRANSPARENT_BACKGROUND },
+				RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = "-200 -120", OffsetMax = "360 120" }
+			}, Layer + ".admin.div", Layer + ".admin.players");
+
+			container.Add(new CuiElement
+			{
+				Parent = Layer + ".admin.players",
+				Components = {
+					new CuiTextComponent { Text = GetMsg("admin_players_title", player), Font = "robotocondensed-bold.ttf", FontSize = 16, Align = TextAnchor.UpperCenter, Color = TEXT_COLOR },
+					new CuiRectTransformComponent { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = "-150 80", OffsetMax = "150 110" }
+				}
+			});
+
+			// Back button
+			container.Add(new CuiButton
+			{
+				Button = { Color = WHITE_TRANSPARENT_BACKGROUND, Command = "mb.admin.open" },
+				Text = { Text = GetMsg("back", player), Font = "robotocondensed-bold.ttf", FontSize = 12, Align = TextAnchor.MiddleCenter, Color = TEXT_COLOR },
+				RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = "-40 -100", OffsetMax = "40 -70" }
+			}, Layer + ".admin.players");
 
 			CuiHelper.AddUi(player, container);
 		}
@@ -818,6 +892,23 @@ namespace Oxide.Plugins
 		#endregion
 
 		#region Commands
+		[ConsoleCommand("mb.admin.settings")]
+		private void cmdAdminSettings(ConsoleSystem.Arg arg)
+		{
+			var player = arg.Player();
+			if (player == null || !HasAdminUIAccess(player))
+				return;
+			UI_DrawAdminSettings(player);
+		}
+
+		[ConsoleCommand("mb.admin.kickmenu")]
+		private void cmdAdminKickMenu(ConsoleSystem.Arg arg)
+		{
+			var player = arg.Player();
+			if (player == null || !HasAdminUIAccess(player))
+				return;
+			UI_DrawAdminPlayers(player);
+		}
 		[ConsoleCommand("mb.admin.open")]
 		private void cmdAdminOpen(ConsoleSystem.Arg arg)
 		{
@@ -1077,6 +1168,9 @@ namespace Oxide.Plugins
 				["admin_title"] = "Admin Panel",
 				["admin_btn_players"] = "Players",
 				["admin_btn_settings"] = "Settings",
+				["admin_settings_title"] = "Server Settings",
+				["admin_players_title"] = "Online Players",
+				["back"] = "Back",
 				["btn.faq"] = "FAQ",
 				["btn.commands"] = "COMMANDS",
 				["btn.info"] = "INFO"
@@ -1098,6 +1192,9 @@ namespace Oxide.Plugins
 				["admin_title"] = "Панель администратора",
 				["admin_btn_players"] = "Игроки",
 				["admin_btn_settings"] = "Настройки",
+				["admin_settings_title"] = "Настройки сервера",
+				["admin_players_title"] = "Игроки онлайн",
+				["back"] = "Назад",
 				["btn.faq"] = "ВОПРОСЫ",
 				["btn.commands"] = "КОМАНДЫ",
 				["btn.info"] = "ИНФО"
