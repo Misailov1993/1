@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -42,6 +42,9 @@ namespace Oxide.Plugins
 
 		[PluginReference] private Plugin ImageLibrary, IQEconomic, Volts;
 
+		private readonly Dictionary<ulong, int> onlinePlayersPageByViewer = new();
+		private const int ONLINE_PAGE_SIZE = 8;
+
 		private const string Layer = "ui.MenuBase.bg";
 		private const string Layer_BLUR = "ui.MenuBase.bg.blur";
 
@@ -83,6 +86,7 @@ namespace Oxide.Plugins
 			GuiManager.Clear();
 			foreach (var x in BasePlayer.activePlayerList)
 				CuiHelper.DestroyUi(x, Layer_BLUR);
+			onlinePlayersPageByViewer.Clear();
 		}
 		#endregion
 
@@ -214,6 +218,29 @@ namespace Oxide.Plugins
 			}
 		}
 		#endregion
+
+		private void OnPlayerConnected(BasePlayer player)
+		{
+			// Refresh online list only for viewers who have it open
+			foreach (var kvp in onlinePlayersPageByViewer.ToList())
+			{
+				var viewer = BasePlayer.FindByID(kvp.Key);
+				if (viewer == null) continue;
+				UI_DrawOnlinePlayers(viewer, kvp.Value);
+			}
+		}
+
+		private void OnPlayerDisconnected(BasePlayer player, string reason)
+		{
+			// Clean up stored page and refresh viewers who have the list open
+			onlinePlayersPageByViewer.Remove(player.userID);
+			foreach (var kvp in onlinePlayersPageByViewer.ToList())
+			{
+				var viewer = BasePlayer.FindByID(kvp.Key);
+				if (viewer == null) continue;
+				UI_DrawOnlinePlayers(viewer, kvp.Value);
+			}
+		}
 
 		#region UI
 
@@ -659,6 +686,7 @@ namespace Oxide.Plugins
 			
 			CuiHelper.AddUi(player, container);
 			
+			UI_DrawOnlinePlayers(player, 0);
 			UI_DrawButtons(player);
 			
 			var banner = cfg.MainSettings.Banners.First();
@@ -743,6 +771,110 @@ namespace Oxide.Plugins
 			}, Layer + ".main.div" + ".banners.div", Layer + ".main.div" + ".banners.div" + ".nextbutton.div", Layer + ".main.div" + ".banners.div" + ".nextbutton.div");
 			CuiHelper.AddUi(player, container);
 		}
+
+		private void UI_DrawOnlinePlayers(BasePlayer player, int page)
+		{
+			if (page < 0) page = 0;
+			var all = BasePlayer.activePlayerList
+				.OrderBy(p => p.displayName, StringComparer.OrdinalIgnoreCase)
+				.ToList();
+			int total = all.Count;
+			int maxPage = Mathf.Max(0, Mathf.CeilToInt(total / (float)ONLINE_PAGE_SIZE) - 1);
+			if (page > maxPage) page = maxPage;
+			onlinePlayersPageByViewer[player.userID] = page;
+
+			int start = page * ONLINE_PAGE_SIZE;
+			var slice = all.Skip(start).Take(ONLINE_PAGE_SIZE).ToList();
+
+			var container = new CuiElementContainer();
+			// Root container for list
+			container.Add(new CuiPanel
+			{
+				CursorEnabled = false,
+				Image = { Color = "1 1 1 0" },
+				RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = "79 -229", OffsetMax = "399 229" }
+			}, Layer + ".main.div", Layer + ".main.div" + ".online.div", Layer + ".main.div" + ".online.div");
+
+			// Header
+			container.Add(new CuiPanel
+			{
+				CursorEnabled = false,
+				Image = { Color = WHITE_TRANSPARENT_BACKGROUND },
+				RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1", OffsetMin = "0 189", OffsetMax = "0 213" }
+			}, Layer + ".main.div" + ".online.div", Layer + ".main.div" + ".online.div" + ".header.bg");
+
+			container.Add(new CuiElement
+			{
+				Parent = Layer + ".main.div" + ".online.div" + ".header.bg",
+				Components = {
+					new CuiTextComponent { Text = $"ОНЛАЙН-ИГРОКИ ({total})", Font = "robotocondensed-bold.ttf", FontSize = 14, Align = TextAnchor.MiddleCenter, Color = TEXT_COLOR },
+					new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1", OffsetMin = "0 0", OffsetMax = "0 0" }
+				}
+			});
+
+			// List entries area
+			float rowHeight = 24f;
+			float startY = 160f;
+			for (int i = 0; i < slice.Count; i++)
+			{
+				var p = slice[i];
+				float yMin = startY - i * (rowHeight + 2f) - rowHeight;
+				float yMax = startY - i * (rowHeight + 2f);
+
+				container.Add(new CuiPanel
+				{
+					CursorEnabled = false,
+					Image = { Color = i % 2 == 0 ? "1 1 1 0.06" : "1 1 1 0.03" },
+					RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1", OffsetMin = $"0 {yMin}", OffsetMax = $"0 {yMax}" }
+				}, Layer + ".main.div" + ".online.div", Layer + ".main.div" + ".online.div" + $".row.{i}");
+
+				// Avatar
+				container.Add(new CuiElement
+				{
+					Parent = Layer + ".main.div" + ".online.div" + $".row.{i}",
+					Components = {
+						new CuiRawImageComponent { SteamId = p.UserIDString },
+						new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "0 1", OffsetMin = "6 2", OffsetMax = "34 -2" }
+					}
+				});
+
+				// Name
+				container.Add(new CuiElement
+				{
+					Parent = Layer + ".main.div" + ".online.div" + $".row.{i}",
+					Components = {
+						new CuiTextComponent { Text = p.displayName, Font = "robotocondensed-regular.ttf", FontSize = 12, Align = TextAnchor.MiddleLeft, Color = TEXT_COLOR },
+						new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1", OffsetMin = "40 4", OffsetMax = "-10 -4" }
+					}
+				});
+			}
+
+			// Pagination controls
+			container.Add(new CuiButton
+			{
+				Button = { Color = WHITE_TRANSPARENT_BACKGROUND, Command = $"mb.online.page {page - 1}" },
+				Text = { Text = "<", Font = "robotocondensed-regular.ttf", FontSize = 14, Align = TextAnchor.MiddleCenter, Color = TEXT_COLOR },
+				RectTransform = { AnchorMin = "0 0", AnchorMax = "1 0", OffsetMin = "0 6", OffsetMax = "-350 30" }
+			}, Layer + ".main.div" + ".online.div");
+
+			container.Add(new CuiElement
+			{
+				Parent = Layer + ".main.div" + ".online.div",
+				Components = {
+					new CuiTextComponent { Text = $"Стр. {page + 1}/{(maxPage + 1)}", Font = "robotocondensed-regular.ttf", FontSize = 12, Align = TextAnchor.LowerCenter, Color = TEXT_COLOR },
+					new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 0", OffsetMin = "0 6", OffsetMax = "0 30" }
+				}
+			});
+
+			container.Add(new CuiButton
+			{
+				Button = { Color = WHITE_TRANSPARENT_BACKGROUND, Command = $"mb.online.page {page + 1}" },
+				Text = { Text = ">", Font = "robotocondensed-regular.ttf", FontSize = 14, Align = TextAnchor.MiddleCenter, Color = TEXT_COLOR },
+				RectTransform = { AnchorMin = "1 0", AnchorMax = "1 0", OffsetMin = "-350 6", OffsetMax = "0 30" }
+			}, Layer + ".main.div" + ".online.div");
+
+			CuiHelper.AddUi(player, container);
+		}
 		#endregion
 
 		#endregion
@@ -810,6 +942,18 @@ namespace Oxide.Plugins
 				return;
 			
 			UI_DrawMainPage(arg.Player());
+		}
+
+		[ConsoleCommand("mb.online.page")]
+		private void cmdOnlinePage(ConsoleSystem.Arg arg)
+		{
+			var player = arg.Player();
+			if (player == null || arg.Args == null || arg.Args.Length == 0)
+				return;
+			if (!int.TryParse(arg.Args[0], out var page))
+				return;
+			if (page < 0) page = 0;
+			UI_DrawOnlinePlayers(player, page);
 		}
 
 		[ConsoleCommand("menu.open")]
