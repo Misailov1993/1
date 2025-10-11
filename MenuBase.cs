@@ -160,7 +160,19 @@ namespace Oxide.Plugins
 		
 		private int GetBalanceVolts(BasePlayer player)
 		{
-			return (int)IQEconomic.Call("API_GET_BALANCE", player.UserIDString);
+			if (!IQEconomic)
+				return 0;
+			var result = IQEconomic.Call("API_GET_BALANCE", player.UserIDString);
+			if (result == null)
+				return 0;
+			try
+			{
+				return Convert.ToInt32(result);
+			}
+			catch
+			{
+				return 0;
+			}
 		}
 
 		private int GetBalanceCoins(BasePlayer player)
@@ -301,7 +313,10 @@ namespace Oxide.Plugins
 			UI_DrawMainDiv(player, needDrawBg);
 			UI_DrawSections(player, activeSection);
 			if (!string.IsNullOrEmpty(activeSection))
+			{
+				// Open content after base UI to ensure proper layering
 				player.SendConsoleCommand(cfg.BaseSettings.Sections[activeSection].Command);
+			}
 		}
 
 		private void UI_DrawMainDiv(BasePlayer player, bool needDrawBG)
@@ -975,9 +990,10 @@ namespace Oxide.Plugins
 
 			var player = arg.Player();
 
-			player.SendConsoleCommand(section.Command);
+			// Build base UI first, then open the section's content
 			UI_DrawMainDiv(player, section.NeedDrawBG);
 			UI_DrawSections(player, sectionKey);
+			player.SendConsoleCommand(section.Command);
 		}
 
 		[ConsoleCommand("mb.openmain")]
