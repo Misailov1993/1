@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -36,6 +36,22 @@ namespace Oxide.Plugins
 			[JsonProperty("Нужно рисовать background этим плагином?")]
 			public bool NeedDrawBG = true;
 		}
+
+		// Player data class for PlayerTopInfo method
+		internal class PlayerData
+		{
+			public string Name { get; set; }
+			public int Point { get; set; }
+			public int PlayTimeInServer { get; set; }
+			public int Kill { get; set; }
+			public int Death { get; set; }
+		}
+
+		// Image UI helper class
+		internal class ImageUI
+		{
+			public string GetImage(string key) => GuiManager.Get(key);
+		}
 		#endregion
 
 		#region Fields
@@ -55,6 +71,9 @@ namespace Oxide.Plugins
 		private const string TEXT_COLOR = "1 1 1 1";
 
 		private const string RED_COLOR = "0.6901961 0.3490196 0.3490196 0.8";
+
+		// Helper instances
+		private ImageUI _imageUI = new ImageUI();
 		
 		#endregion
 
@@ -143,6 +162,41 @@ namespace Oxide.Plugins
 				return -1;
 			return (int)IQEconomic.Call("API_GET_BALANCE", player.UserIDString);
 		}
+
+		// Helper methods for PlayerTopInfo
+		private PlayerData GetPlayerData(ulong playerID)
+		{
+			// Placeholder implementation - replace with actual data retrieval logic
+			var player = BasePlayer.FindByID(playerID);
+			if (player == null) return null;
+
+			return new PlayerData
+			{
+				Name = player.displayName,
+				Point = 0, // Replace with actual points system
+				PlayTimeInServer = 0, // Replace with actual playtime tracking
+				Kill = 0, // Replace with actual kill tracking
+				Death = 0 // Replace with actual death tracking
+			};
+		}
+
+		private int GetTopScore(ulong playerID)
+		{
+			// Placeholder implementation - replace with actual top score logic
+			return 1; // Default to position 1
+		}
+
+		private string GetImage(string key)
+		{
+			return GuiManager.Get(key);
+		}
+
+		private void BlockUi(BasePlayer player)
+		{
+			// Call the PlayerTopInfo method with the player's ID
+			PlayerTopInfo(player, player.userID);
+		}
+
 		private static class GuiManager
 		{
 			public static void Clear()
@@ -743,6 +797,108 @@ namespace Oxide.Plugins
 			}, Layer + ".main.div" + ".banners.div", Layer + ".main.div" + ".banners.div" + ".nextbutton.div", Layer + ".main.div" + ".banners.div" + ".nextbutton.div");
 			CuiHelper.AddUi(player, container);
 		}
+
+		private void PlayerTopInfo(BasePlayer player, ulong playerID)
+		{
+			#region [Vars]
+			var container = new CuiElementContainer();
+			string colored = "0 0 0 0.5";
+
+			var data = GetPlayerData(playerID);
+			if (data == null) return;
+			#endregion
+
+			#region [Parrent]
+			container.Add(new CuiElement
+			{
+				Name = "MainStats" + ".Main",
+				Parent = "ui.MenuBase.bg",
+				Components = 
+				{
+					new CuiRawImageComponent { Png = _imageUI.GetImage("MAIN_FON"), Color = "1 1 1 1" },
+					new CuiRectTransformComponent { AnchorMin = "-0.315 -0.27", AnchorMax = "1.3 1.275", OffsetMax = "0 0" },
+				}
+			});
+			#endregion
+
+			#region [Main-Gui]
+			container.Add(new CuiPanel
+			{
+				RectTransform = { AnchorMin = "0.195 0.38", AnchorMax = "0.438 0.72" },
+				Image = { Color = "0 0 0 0" }
+			}, "MainStats" + ".Main", Layer + ".Profile");
+			#endregion
+
+			#region [Avatar]
+			container.Add(new CuiElement
+			{
+				Parent =  Layer + ".Profile",
+				Components =
+				{
+					new CuiRawImageComponent { Png = GetImage($"avatar_{playerID}") },
+					new CuiRectTransformComponent { AnchorMin = "0.035 0.51", AnchorMax = "0.38 0.945", OffsetMin = "4 4", OffsetMax = "-4 -4" }
+				}
+			});
+			#endregion
+
+			#region [Title]
+			container.Add(new CuiLabel
+			{
+				RectTransform = { AnchorMin = "0.36 0.91", AnchorMax = $"1 1", OffsetMax = "0 0" },
+				Text = { Text = "●", Color = BasePlayer.FindByID(playerID) != null ? "0.00 1.00 0.00 1.00" : "1.00 0.00 0.00 1.00", Align = TextAnchor.MiddleLeft, FontSize = 12, Font = "robotocondensed-regular.ttf" }
+			}, Layer + ".Profile");
+
+			container.Add(new CuiLabel
+			{
+				RectTransform = { AnchorMin = "0.46 0.91", AnchorMax = $"0.99 1", OffsetMax = "0 0" },
+				Text = { Text = $"{data.Name}", Color = "1 1 1 0.8", Align = TextAnchor.MiddleLeft, FontSize = 20, Font = "robotocondensed-regular.ttf" }
+			}, Layer + ".Profile");
+			#endregion
+
+			#region [Info]
+			Dictionary<string, string> _playerInfo = new Dictionary<string, string>()
+			{
+				{ "МЕСТО В ТОПЕ:", $"{GetTopScore(playerID)}" },
+				{ "ОЧКОВ:", $"{data.Point}" },
+				{ "АКТИВНОСТЬ:", $"{data.PlayTimeInServer}м." },
+				{ "УБИЙСТВ:", $"{data.Kill}" },
+				{ "СМЕРТЕЙ:", $"{data.Death}" },
+				{ "К/Д:", $"{(data.Death == 0 ? data.Kill : (float)Math.Round(((float)data.Kill) / data.Death, 2))}" },
+			};
+
+			foreach (var check in _playerInfo.Select((i, t) => new { A = i, B = t }))
+			{
+				container.Add(new CuiPanel
+				{
+					RectTransform = { AnchorMin = $"0.42 {0.83 - Math.Floor((float) check.B/ 1) * 0.0625}",
+										AnchorMax = $"0.938 {0.95 - Math.Floor((float) check.B / 1) * 0.0625}", },
+					Image = { Color = "0 0 0 0", Material = "assets/icons/greyout.mat" }
+				}, Layer + ".Profile", Layer + ".Profile" + ".Info" + $".{check.B}");
+
+				container.Add(new CuiElement
+				{
+					Parent = Layer + ".Profile" + ".Info" + $".{check.B}",
+					Components =
+					{
+						new CuiTextComponent { Text = $"{check.A.Key}", Color = "1 1 1 1", Align = TextAnchor.MiddleLeft, FontSize = 12, Font = "robotocondensed-regular.ttf" },
+						new CuiRectTransformComponent { AnchorMin = $"0.011 0", AnchorMax = $"1 1" },
+					}
+				}); 
+
+				container.Add(new CuiElement
+				{
+					Parent = Layer + ".Profile" + ".Info" + $".{check.B}",
+					Components =
+					{
+						new CuiTextComponent { Text = $"{check.A.Value}", Color = "1 1 1 1", Align = TextAnchor.MiddleRight, FontSize = 12, Font = "robotocondensed-regular.ttf" },
+						new CuiRectTransformComponent { AnchorMin = $"0 0", AnchorMax = $"0.985 1" },
+					}
+				}); 
+			}
+			#endregion
+
+			CuiHelper.AddUi(player, container);
+		}
 		#endregion
 
 		#endregion
@@ -820,10 +976,20 @@ namespace Oxide.Plugins
 			
 			cmdOpen(arg.Player());
 		}
+
 		[ChatCommand("menu")]
 		private void cmdOpen(BasePlayer player)
 		{
 			UI_DrawMain(player);
+		}
+
+		[ConsoleCommand("mb.block.open")]
+		private void cmdCaseOpen(ConsoleSystem.Arg arg)
+		{
+			if (arg.Player() == null)
+				return;
+
+			BlockUi(arg.Player());
 		}
 
 		#endregion
