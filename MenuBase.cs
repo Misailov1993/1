@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -29,18 +29,25 @@ namespace Oxide.Plugins
 			[JsonProperty("Позиция")] public int Order;
 			[JsonProperty("Ключ перевода из lang-файла")]
 			public string LangKey;
+			[JsonProperty("Ярлык вкладки (если не используете lang)")]
+			public string Title;
 
 			[JsonProperty("Команда для открытия раздела")]
 			public string Command;
 
 			[JsonProperty("Нужно рисовать background этим плагином?")]
 			public bool NeedDrawBG = true;
+
+			[JsonProperty("Ключ иконки (без .png)")]
+			public string IconKey;
 		}
 		#endregion
 
 		#region Fields
 
 		[PluginReference] private Plugin ImageLibrary, IQEconomic, Volts;
+
+		private readonly Dictionary<string, Section> runtimeSections = new();
 
 		private const string Layer = "ui.MenuBase.bg";
 		private const string Layer_BLUR = "ui.MenuBase.bg.blur";
@@ -64,9 +71,10 @@ namespace Oxide.Plugins
 		{
 			var images = new List<string>();
 
-			foreach (var x in cfg.BaseSettings.Sections)
+			foreach (var x in GetAllSections())
 			{
-				images.Add($"Icon_{x.Key}");
+				var iconKey = string.IsNullOrWhiteSpace(x.Value.IconKey) ? $"Icon_{x.Key}" : x.Value.IconKey;
+				images.Add(iconKey);
 			}
 			foreach (var x in cfg.MainSettings.Banners)
 				images.Add(x.Value);
@@ -130,6 +138,40 @@ namespace Oxide.Plugins
 			var dateTime = GetNextWipeDate();
 
 			return $"{dateTime.Day} {GetMonthName(dateTime.Month)}";
+		}
+
+		private Dictionary<string, Section> GetAllSections()
+		{
+			var result = new Dictionary<string, Section>(cfg.BaseSettings.Sections ?? new Dictionary<string, Section>());
+			// Runtime-registered sections override static config if same key is used
+			foreach (var kvp in runtimeSections)
+				result[kvp.Key] = kvp.Value;
+			return result;
+		}
+
+		private string ResolveActiveSection(string preferredKey = null)
+		{
+			var sections = GetAllSections();
+			if (!string.IsNullOrEmpty(preferredKey) && sections.ContainsKey(preferredKey))
+				return preferredKey;
+			if (!string.IsNullOrEmpty(cfg.BaseSettings.DefaultSection) && sections.ContainsKey(cfg.BaseSettings.DefaultSection))
+				return cfg.BaseSettings.DefaultSection;
+			var first = sections.OrderBy(x => x.Value.Order).FirstOrDefault();
+			return first.Key ?? string.Empty;
+		}
+
+		private static string GetIconKey(string sectionKey, Section section)
+		{
+			return string.IsNullOrWhiteSpace(section.IconKey) ? $"Icon_{sectionKey}" : section.IconKey;
+		}
+
+		private string GetSectionLabel(Section section, BasePlayer player)
+		{
+			if (!string.IsNullOrWhiteSpace(section?.LangKey))
+				return GetMsg(section.LangKey, player);
+			if (!string.IsNullOrWhiteSpace(section?.Title))
+				return section.Title;
+			return string.Empty;
 		}
 		
 		private int GetBalanceVolts(BasePlayer player)
@@ -218,7 +260,7 @@ namespace Oxide.Plugins
 		#region UI
 
 		#region BaseUI
-		private void UI_DrawMain(BasePlayer player)
+		private void UI_DrawMain(BasePlayer player, string openSectionKey = null)
 		{
 			CuiHelper.DestroyUi(player, Layer_BLUR);
 			var container = new CuiElementContainer();
@@ -241,26 +283,28 @@ namespace Oxide.Plugins
 				RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = "-388.376 -229.226", OffsetMax = "410.776 229.243" }
 			}, Layer_BLUR, Layer, Layer);
 			
-			container.Add(new CuiPanel
+			var useTopTabs = cfg?.BaseSettings?.TabsTop == true;
+			if (!useTopTabs)
 			{
-				CursorEnabled = false,
-				Image = { Color = BACKGROUND_COLOR },
-				RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = "-399.575 -229.235", OffsetMax = "-234.292 229.235" }
-			}, Layer, Layer + ".sections.div");
+				container.Add(new CuiPanel
+				{
+					CursorEnabled = false,
+					Image = { Color = BACKGROUND_COLOR },
+					RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = "-399.575 -229.235", OffsetMax = "-234.292 229.235" }
+				}, Layer, Layer + ".sections.div");
+			}
 			
 			CuiHelper.AddUi(player, container);
 
-			var activeSection = "";
-
-			if (cfg.BaseSettings.Sections.ContainsKey(cfg.BaseSettings.DefaultSection))
-				activeSection = cfg.BaseSettings.DefaultSection;
-			
-			UI_DrawMainDiv(player, cfg.BaseSettings.Sections[activeSection].NeedDrawBG);
-			
-			UI_DrawSections(player, activeSection);
-			
-			if (!string.IsNullOrEmpty(activeSection))
-				player.SendConsoleCommand(cfg.BaseSettings.Sections[activeSection].Command);
+			var activeSection = ResolveActiveSection(openSectionKey);
+			var sections = GetAllSections();
+			if (!string.IsNullOrEmpty(activeSection) && sections.ContainsKey(activeSection))
+			{
+				UI_DrawMainDiv(player, sections[activeSection].NeedDrawBG);
+				UI_DrawSections(player, activeSection);
+				if (!string.IsNullOrEmpty(sections[activeSection].Command))
+					player.SendConsoleCommand(sections[activeSection].Command);
+			}
 		}
 
 		private void UI_DrawMainDiv(BasePlayer player, bool needDrawBG)
@@ -281,7 +325,7 @@ namespace Oxide.Plugins
 			if (needDrawBG)
 				container.Add(new CuiButton
 				{
-					Button = { Color = RED_COLOR, Close = Layer_BLUR },
+					Button = { Color = RED_COLOR, Command = "mb.close", Close = Layer_BLUR },
 					Text = { Text = "X", Font = "permanentmarker.ttf", FontSize = 20, Align = TextAnchor.MiddleCenter, Color = TEXT_COLOR },
 					RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = "285.139 199.674", OffsetMax = "314.69 229.226" }
 				}, Layer + ".main.div", Layer + ".main.div" + ".close");
@@ -292,6 +336,73 @@ namespace Oxide.Plugins
 		{
 			var container = new CuiElementContainer();
 
+			if (cfg?.BaseSettings?.TabsTop == true)
+			{
+				// Top horizontal tabs bar
+				container.Add(new CuiPanel
+				{
+					CursorEnabled = false,
+					Image = { Color = "1 1 1 0" },
+					RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = "-229.801 199.674", OffsetMax = "399.579 229.228" }
+				}, Layer + ".main.div", Layer + ".tabs.top");
+
+				float tabWidth = 122f;
+				float gap = 6f;
+				float minx = -229.801f;
+				float maxx = minx + tabWidth;
+				float miny = 0f;
+				float maxy = 29.554f;
+
+				foreach (var x in GetAllSections().OrderBy(x => x.Value.Order))
+				{
+					bool isActive = x.Key == activeSection;
+					string bgName = Layer + ".tabs.top" + $".{x.Key}" + ".bg";
+					container.Add(new CuiElement()
+					{
+						Name = bgName,
+						Parent = Layer + ".tabs.top",
+						Components =
+						{
+							new CuiImageComponent() { Color = isActive ? GRADIENTDOWN_COLOR : "0 0 0 0" },
+							new CuiRectTransformComponent() { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = $"{minx} {miny}", OffsetMax = $"{maxx} {maxy}" }
+						}
+					});
+					container.Add(new CuiButton
+					{
+						Button = { Color = "0 0 0 0", Command = isActive ? "" : $"mb.section {x.Key}" },
+						RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" }
+					}, bgName, Layer + ".tabs.top" + $".{x.Key}");
+
+					// Icon
+					container.Add(new CuiElement()
+					{
+						Parent = bgName,
+						Components =
+						{
+							new CuiRawImageComponent() { Png = GuiManager.Get(GetIconKey(x.Key, x.Value)) },
+							new CuiRectTransformComponent() { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = $"{minx + 6} {miny + 6}", OffsetMax = $"{minx + 26} {maxy - 6}" }
+						}
+					});
+
+					// Label
+					container.Add(new CuiElement
+					{
+						Parent = bgName,
+						Components = {
+							new CuiTextComponent { Text = GetSectionLabel(x.Value, player), Font = "robotocondensed-regular.ttf", FontSize = 12, Align = TextAnchor.MiddleLeft, Color = TEXT_COLOR },
+							new CuiRectTransformComponent { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = $"{minx + 32} {miny}", OffsetMax = $"{maxx - 6} {maxy}" }
+						}
+					});
+
+					minx = maxx + gap;
+					maxx = minx + tabWidth;
+				}
+
+				CuiHelper.AddUi(player, container);
+				return;
+			}
+
+			// Left vertical tabs (default)
 			container.Add(new CuiPanel
 			{
 				CursorEnabled = false,
@@ -317,7 +428,7 @@ namespace Oxide.Plugins
 
 			float TextNonActiveOffset = 20f;
 			
-			foreach (var x in cfg.BaseSettings.Sections.OrderBy(x => x.Value.Order))
+			foreach (var x in GetAllSections().OrderBy(x => x.Value.Order))
 			{
 				bool isActive = x.Key == activeSection;
 
@@ -355,7 +466,7 @@ namespace Oxide.Plugins
 					Parent = Layer + ".sections.div" + ".items" + $".{x.Key}" + ".background",
 					Components =
 					{
-						new CuiRawImageComponent() { Png = GuiManager.Get($"Icon_{x.Key}") },
+						new CuiRawImageComponent() { Png = GuiManager.Get(GetIconKey(x.Key, x.Value)) },
 						new CuiRectTransformComponent() { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = isActive ? imagePosActiveMin : imagePosNonActiveMin, OffsetMax = isActive ? imagePosActiveMax : imagePosNonActiveMax }
 					}
 				});
@@ -364,7 +475,7 @@ namespace Oxide.Plugins
 				{
 					Parent = Layer + ".sections.div" + ".items" + $".{x.Key}" + ".background",
 					Components = {
-						new CuiTextComponent { Text = GetMsg(x.Value.LangKey, player), Font = "robotocondensed-regular.ttf", FontSize = 12, Align = isActive ? TextAnchor.MiddleCenter : TextAnchor.MiddleLeft, Color = TEXT_COLOR },
+						new CuiTextComponent { Text = GetSectionLabel(x.Value, player), Font = "robotocondensed-regular.ttf", FontSize = 12, Align = isActive ? TextAnchor.MiddleCenter : TextAnchor.MiddleLeft, Color = TEXT_COLOR },
 						new CuiRectTransformComponent { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = $"{(-73.317 + (!isActive ? TextNonActiveOffset : 0))} -16.182", OffsetMax = "94.834 16.182" }
 					}
 				});
@@ -788,7 +899,7 @@ namespace Oxide.Plugins
 				return;
 
 			var sectionKey = arg.Args[0];
-			if (!cfg.BaseSettings.Sections.TryGetValue(sectionKey, out var section))
+			if (!GetAllSections().TryGetValue(sectionKey, out var section))
 				return;
 
 			Effect x = new Effect("assets/bundled/prefabs/fx/notice/loot.drag.grab.fx.prefab", arg.Player(), 0, new Vector3(), new Vector3());
@@ -801,6 +912,23 @@ namespace Oxide.Plugins
 			player.SendConsoleCommand(section.Command);
 			UI_DrawMainDiv(player, section.NeedDrawBG);
 			UI_DrawSections(player, sectionKey);
+		}
+
+		[ConsoleCommand("mb.open")]
+		private void cmdOpenTo(ConsoleSystem.Arg arg)
+		{
+			if (arg.Player() == null)
+				return;
+			string section = arg.Args != null && arg.Args.Length > 0 ? arg.Args[0] : null;
+			UI_DrawMain(arg.Player(), section);
+		}
+
+		[ConsoleCommand("mb.close")]
+		private void cmdClose(ConsoleSystem.Arg arg)
+		{
+			if (arg.Player() == null)
+				return;
+			CuiHelper.DestroyUi(arg.Player(), Layer_BLUR);
 		}
 
 		[ConsoleCommand("mb.openmain")]
@@ -841,6 +969,8 @@ namespace Oxide.Plugins
 				[JsonProperty("Какой раздел открывать по умолчанию?", Order = 0)]
 				public string DefaultSection;
 				[JsonProperty("Разделы", Order = 1)] public Dictionary<string, Section> Sections;		
+				[JsonProperty("Расположить вкладки сверху (true) или слева (false)", Order = 2)]
+				public bool TabsTop = false;
 			}
 
 			internal class MainPageSettings
@@ -857,6 +987,7 @@ namespace Oxide.Plugins
 				BaseSettings = new()
 				{
 					DefaultSection = "menu",
+					TabsTop = false,
 					Sections = new()
 					{
 						["menu"] = new()
@@ -1014,6 +1145,36 @@ namespace Oxide.Plugins
 
 		[HookMethod("API_GetImage")]
 		private string API_GetImage(string key) => GuiManager.Get(key);
+
+		[HookMethod("API_RegisterSection")]
+		private bool API_RegisterSection(string key, string titleOrLangKey, string command, int order = 100, bool needDrawBg = true, string iconKey = null, bool isLangKey = true)
+		{
+			if (string.IsNullOrEmpty(key))
+				return false;
+			runtimeSections[key] = new Section
+			{
+				Order = order,
+				LangKey = isLangKey ? titleOrLangKey : null,
+				Title = isLangKey ? null : titleOrLangKey,
+				Command = command,
+				NeedDrawBG = needDrawBg,
+				IconKey = iconKey
+			};
+			return true;
+		}
+
+		[HookMethod("API_UnregisterSection")]
+		private bool API_UnregisterSection(string key)
+		{
+			return runtimeSections.Remove(key);
+		}
+
+		[HookMethod("API_OpenMenu")]
+		private void API_OpenMenu(BasePlayer player, string sectionKey = null)
+		{
+			if (player == null) return;
+			UI_DrawMain(player, sectionKey);
+		}
 
 		#endregion
 	}
