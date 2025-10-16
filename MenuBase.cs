@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -48,13 +48,13 @@ namespace Oxide.Plugins
 		private const string GRADIENT_RIGHT = "assets/content/ui/ui.background.transparent.linearltr.tga";
 		private const string GRADIENTDOWN_COLOR = "0 0 0 0.7";
 		
-		private const string WHITE_TRANSPARENT_BACKGROUND = "1 1 1 0.3";
-		private const string ORANGE_COLOR = "0.9490196 0.5019608 0.05490196 1";
-		private const string BACKGROUND_COLOR = "0.3568628 0.3568628 0.3568628 0.75";
+		private const string WHITE_TRANSPARENT_BACKGROUND = "1 1 1 0.2";
+		private const string ORANGE_COLOR = "0.98 0.13 0.42 1";
+		private const string BACKGROUND_COLOR = "0.12 0.12 0.14 0.92";
 
 		private const string TEXT_COLOR = "1 1 1 1";
 
-		private const string RED_COLOR = "0.6901961 0.3490196 0.3490196 0.8";
+		private const string RED_COLOR = "0.98 0.13 0.42 1";
 		
 		#endregion
 
