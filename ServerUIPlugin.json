@@ -1,0 +1,33 @@
+{
+  "ServerName": "Bird Rust — Modded 2x (MAX3) [DUEL | SKIN | CASE | EVENT]",
+  "ResourceMultiplier": 2,
+  "TelegramUrl": "https://t.me/your_channel",
+  "DiscordUrl": "https://discord.gg/your_server", 
+  "VkUrl": "https://vk.com/your_group",
+  "NextWipeDate": "02.10.25",
+  "Localization": {
+    "main": "ГЛАВНАЯ",
+    "info": "ИНФОРМАЦИЯ", 
+    "kits": "НАБОРЫ",
+    "daily": "ЕЖЕДНЕВКИ",
+    "cases": "КЕЙСЫ",
+    "blocking": "БЛОКИРОВКА",
+    "pri": "ПРИ",
+    "statistics": "СТАТИСТИКА",
+    "basket": "КОРЗИНА",
+    "online": "ОНЛАЙН",
+    "connecting": "ПОДКЛЮЧАЕТСЯ",
+    "queue": "ОЧЕРЕДЬ",
+    "team": "команда",
+    "player": "игрока",
+    "players": "игроков",
+    "resource_rates": "рейты ресурсов",
+    "social_settings": "НАСТРОЙКИ СОЦ. СЕТЕЙ",
+    "connect": "ПРИВЯЗАТЬ",
+    "wipe_schedule": "РАСПИСАНИЕ ВАЙПОВ",
+    "next_wipe": "Следующий вайп",
+    "prev_wipe": "Предыдущий вайп", 
+    "unknown": "Неизвестно",
+    "wipe_from_dev": "Обнова от разработчиков"
+  }
+}
