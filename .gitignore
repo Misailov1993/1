@@ -1,0 +1,23 @@
+# Build and cache
+/dist
+/build
+/.cache
+/node_modules
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Large local media (keep out of repo)
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+
+# Editor
+.vscode/
+.idea/

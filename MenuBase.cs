@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -74,8 +74,9 @@ namespace Oxide.Plugins
 			images.Add("coins");
 			images.Add("banner_shop");
 			images.Add("volts_shop_btn");
-			
-			GuiManager.LoadImages(images);
+
+			// Defer image IO to the next tick to avoid blocking server init
+			NextTick(() => GuiManager.LoadImages(images));
 		}
 
 		private void Unload()
@@ -176,41 +177,51 @@ namespace Oxide.Plugins
 
 			private static IEnumerator LoadIconsCoroutine()
 			{
-				for (int i = 0; i < iconImageInfos.Count; i++)
+				// Create a stable snapshot of keys to avoid O(n^2) dictionary traversal
+				var keys = iconImageInfos.Keys.ToList();
+				for (int i = 0; i < keys.Count; i++)
 				{
-					var imageInfo = iconImageInfos.ElementAtOrDefault(i);
-					string url = "file://" + Interface.Oxide.DataDirectory + Path.DirectorySeparatorChar +
-					             "/MenuBase/Images/" +
-					             imageInfo.Key + ".png";
-
-					using (WWW www = new WWW(url))
+					var key = keys[i];
+					var path = Path.Combine(Interface.Oxide.DataDirectory, "MenuBase", "Images", key + ".png");
+					try
 					{
-						yield return www;
-
-						if (www.error != null)
+						if (!File.Exists(path))
 						{
-							FailedLoad.Add(imageInfo.Key);
+							FailedLoad.Add(key);
 						}
 						else
 						{
-							var texture = www.texture;
-							var imageId = FileStorage.server.Store(texture.EncodeToPNG(), FileStorage.Type.png,
-								CommunityEntity.ServerInstance.net.ID);
-							iconImageInfos[imageInfo.Key] = imageId;
-							GameObject.DestroyImmediate(texture);
+							var bytes = File.ReadAllBytes(path);
+							if (bytes == null || bytes.Length == 0)
+							{
+								FailedLoad.Add(key);
+							}
+							else
+							{
+								// Store raw PNG bytes directly to avoid decode/encode overhead
+								var imageId = FileStorage.server.Store(bytes, FileStorage.Type.png, CommunityEntity.ServerInstance.net.ID);
+								iconImageInfos[key] = imageId;
+							}
 						}
 					}
+					catch (Exception)
+					{
+						FailedLoad.Add(key);
+					}
+
+					// Yield periodically to keep the server responsive during bulk loads
+					if (i % 4 == 0)
+						yield return null;
 				}
 
-				if (FailedLoad.IsNullOrEmpty())
-					yield break;
-				
-				Debug.LogError($"\n\nFailed for loading {FailedLoad.Count} images in plugin MenuBase");
-				Debug.LogError("__________________________________");
-				for (int i = 0; i < FailedLoad.Count; i++)
-					Debug.LogWarning($"[{i + 1}]" + $"{FailedLoad[i]}".PadLeft(31 - (i + 1 >= 10 ? 1 : 0), ' '));
-				Debug.LogError("__________________________________\n\n");
-					
+				if (!FailedLoad.IsNullOrEmpty())
+				{
+					Debug.LogError($"\n\nFailed to load {FailedLoad.Count} images in plugin MenuBase");
+					Debug.LogError("__________________________________");
+					for (int i = 0; i < FailedLoad.Count; i++)
+						Debug.LogWarning($"[{i + 1}]" + $"{FailedLoad[i]}".PadLeft(31 - (i + 1 >= 10 ? 1 : 0), ' '));
+					Debug.LogError("__________________________________\n\n");
+				}
 			}
 		}
 		#endregion
